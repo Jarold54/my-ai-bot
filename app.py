@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, jsonify
 import requests
 import json
+import os
+from groq import Groq
 
 app = Flask(__name__)
-
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3:latest"
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+MODEL = "llama-3.3-70b-versatile"
 
 conversation_history = []
 corrections = []
@@ -34,40 +35,31 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     user_message = request.json.get("message")
-    
-    system_prompt = """You are a helpful AI assistant that can answer questions, 
-    write and debug code, and help with any task. You learn from corrections and 
-    improve your responses. Always be clear, accurate, and helpful."""
-    
+    system_prompt = """You are a helpful AI assistant that can answer questions,
+write and debug code, and help with any task. You learn from corrections and
+improve your responses. Always be clear, accurate, and helpful."""
     if corrections:
-   system_prompt += f"\n\nIMPORTANT - Learn from these corrections: {json.dumps(corrections)}"
-    
+        system_prompt += f"\n\nIMPORTANT - Learn from these corrections: {json.dumps(corrections)}"
     search_result = ""
     if needs_search(user_message):
         search_result = web_search(user_message)
         user_message_with_context = f"{user_message}\n\n[Web search result: {search_result}]"
     else:
         user_message_with_context = user_message
-    
     conversation_history.append({
         "role": "user",
         "content": user_message_with_context
     })
-    
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "system", "content": system_prompt}] + conversation_history,
-        "stream": False
-    }
-    
-    response = requests.post(OLLAMA_URL, json=payload)
-    reply = response.json()["message"]["content"]
-    
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "system", "content": system_prompt}] + conversation_history,
+        max_tokens=1024
+    )
+    reply = response.choices[0].message.content
     conversation_history.append({
-        "role": "assistant", 
+        "role": "assistant",
         "content": reply
     })
-    
     return jsonify({
         "reply": reply,
         "searched": bool(search_result)
@@ -81,3 +73,4 @@ def correct():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
+
