@@ -2,3 +2,7 @@ flask
 groq
 requests
 gunicorn
+matplotlib
+pandas
+plotly
+numpy
