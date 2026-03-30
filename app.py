@@ -88,18 +88,31 @@ def needs_graph(message):
 
 def create_graph(message, ai_response):
     try:
-        data_prompt = f"""Extract data from this request and return ONLY a valid JSON object like this:
-{{"type": "bar", "labels": ["A","B","C"], "values": [1,2,3], "title": "Chart Title"}}
-Types can be: bar, line, pie
-Only return the JSON. No explanation. No markdown. No extra text.
-Request: {message}"""
+        data_prompt = f"""You are a data extraction tool. Extract chart data from the user request below.
+Return ONLY a valid JSON object. No explanation. No markdown. No extra text whatsoever.
+Use the EXACT numbers the user provided. Do not change or normalize them.
+
+Return this exact format:
+{{"type": "pie", "labels": ["Label1","Label2"], "values": [50, 30], "title": "Chart Title"}}
+
+Rules:
+- Use exact numbers from the request
+- type must be: pie, bar, or line
+- labels and values must match in length
+- Return ONLY the JSON object
+
+User request: {message}"""
+
         data_response = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": data_prompt}],
-            max_tokens=500
+            max_tokens=500,
+            temperature=0.1
         )
         raw = data_response.choices[0].message.content
-        clean = raw.replace("```json", "").replace("```", "").strip()
+        start = raw.find('{')
+        end = raw.rfind('}') + 1
+        clean = raw[start:end]
         graph_data = json.loads(clean)
         df = pd.DataFrame({
             "labels": graph_data["labels"],
@@ -116,9 +129,9 @@ Request: {message}"""
             plot_bgcolor="rgba(0,0,0,0)",
             font_color="white"
         )
-        graph_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-        return graph_json
-    except:
+        return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    except Exception as e:
+        print(f"Graph error: {e}")
         return None
 
 @app.route("/")
@@ -136,47 +149,4 @@ def chat():
             memory_text += f"- [{mem_type}]: {mem_content}\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = f"""You are a helpful AI assistant that can answer questions,
-write and debug code, analyze data, create graphs, and help with any task.
-You have long term memory and remember things from past conversations.
-When asked for a chart or graph do not create text charts, just describe the data briefly.
-Always be clear, accurate, and helpful.
-{memory_text}"""
-    search_result = ""
-    if needs_search(user_message):
-        search_result = web_search(user_message)
-        user_message_with_context = f"{user_message}\n\n[Web search result: {search_result}]"
-    else:
-        user_message_with_context = user_message
-    save_conversation("user", user_message)
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_message_with_context}],
-        max_tokens=1024
-    )
-    reply = response.choices[0].message.content
-    save_conversation("assistant", reply)
-    if any(word in user_message.lower() for word in ["my name is", "i am", "i like", "i prefer", "i work", "i live"]):
-        save_memory("user_info", user_message)
-    graph_json = None
-    if needs_graph(user_message):
-        graph_json = create_graph(user_message, reply)
-    return jsonify({
-        "reply": reply,
-        "searched": bool(search_result),
-        "graph": graph_json
-    })
-
-@app.route("/correct", methods=["POST"])
-def correct():
-    correction = request.json.get("correction")
-    save_memory("correction", correction)
-    return jsonify({"status": "saved"})
-
-@app.route("/memories", methods=["GET"])
-def view_memories():
-    memories = get_memories()
-    return jsonify({"memories": [{"type": t, "content": c} for t, c in memories]})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    system_prompt = f"""You are a helpful A
