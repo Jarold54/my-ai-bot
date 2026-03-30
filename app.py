@@ -16,26 +16,17 @@ MODEL = "llama-3.3-70b-versatile"
 def init_db():
     conn = sqlite3.connect('memory.db')
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS memories
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  type TEXT,
-                  content TEXT,
-                  timestamp TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS conversations
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  role TEXT,
-                  content TEXT,
-                  timestamp TEXT)''')
+    c.execute("CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, content TEXT, timestamp TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, timestamp TEXT)")
     conn.commit()
     conn.close()
 
 init_db()
 
-def save_memory(type, content):
+def save_memory(mtype, content):
     conn = sqlite3.connect('memory.db')
     c = conn.cursor()
-    c.execute("INSERT INTO memories (type, content, timestamp) VALUES (?, ?, ?)",
-              (type, content, str(datetime.datetime.now())))
+    c.execute("INSERT INTO memories (type, content, timestamp) VALUES (?, ?, ?)", (mtype, content, str(datetime.datetime.now())))
     conn.commit()
     conn.close()
 
@@ -50,8 +41,7 @@ def get_memories():
 def save_conversation(role, content):
     conn = sqlite3.connect('memory.db')
     c = conn.cursor()
-    c.execute("INSERT INTO conversations (role, content, timestamp) VALUES (?, ?, ?)",
-              (role, content, str(datetime.datetime.now())))
+    c.execute("INSERT INTO conversations (role, content, timestamp) VALUES (?, ?, ?)", (role, content, str(datetime.datetime.now())))
     conn.commit()
     conn.close()
 
@@ -66,12 +56,12 @@ def get_recent_conversations():
 def web_search(query):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1"
+        url = "https://api.duckduckgo.com/?q=" + query + "&format=json&no_html=1"
         response = requests.get(url, headers=headers, timeout=5)
         data = response.json()
         result = data.get("AbstractText", "")
         if not result:
-            result = f"Search performed for: {query}. No instant answer found."
+            result = "Search performed for: " + query + ". No instant answer found."
         return result
     except:
         return "Web search unavailable right now."
@@ -86,22 +76,9 @@ def needs_graph(message):
                 "histogram", "scatter", "compare data", "breakdown", "distribution"]
     return any(word in message.lower() for word in keywords)
 
-def create_graph(message, ai_response):
+def create_graph(message):
     try:
-        data_prompt = f"""You are a data extraction tool. Extract chart data from the user request below.
-Return ONLY a valid JSON object. No explanation. No markdown. No extra text whatsoever.
-Use the EXACT numbers the user provided. Do not change or normalize them.
-
-Return this exact format:
-{{"type": "pie", "labels": ["Label1","Label2"], "values": [50, 30], "title": "Chart Title"}}
-
-Rules:
-- Use exact numbers from the request
-- type must be: pie, bar, or line
-- labels and values must match in length
-- Return ONLY the JSON object
-
-User request: {message}"""
+        data_prompt = "You are a data extraction tool. Extract chart data from the user request below.\nReturn ONLY a valid JSON object. No explanation. No markdown. No extra text whatsoever.\nUse the EXACT numbers the user provided. Do not change or normalize them.\n\nReturn this exact format:\n{\"type\": \"pie\", \"labels\": [\"Label1\",\"Label2\"], \"values\": [50, 30], \"title\": \"Chart Title\"}\n\nRules:\n- Use exact numbers from the request\n- type must be: pie, bar, or line\n- labels and values must match in length\n- Return ONLY the JSON object\n\nUser request: " + message
 
         data_response = client.chat.completions.create(
             model=MODEL,
@@ -131,7 +108,7 @@ User request: {message}"""
         )
         return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
     except Exception as e:
-        print(f"Graph error: {e}")
+        print("Graph error: " + str(e))
         return None
 
 @app.route("/")
@@ -146,7 +123,45 @@ def chat():
     if memories:
         memory_text = "\n\nLong term memory (from past sessions):\n"
         for mem_type, mem_content in memories:
-            memory_text += f"- [{mem_type}]: {mem_content}\n"
+            memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = f"""You are a helpful A
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory and remember things from past conversations. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear, accurate, and helpful." + memory_text
+    search_result = ""
+    if needs_search(user_message):
+        search_result = web_search(user_message)
+        user_message_with_context = user_message + "\n\n[Web search result: " + search_result + "]"
+    else:
+        user_message_with_context = user_message
+    save_conversation("user", user_message)
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_message_with_context}],
+        max_tokens=1024
+    )
+    reply = response.choices[0].message.content
+    save_conversation("assistant", reply)
+    if any(word in user_message.lower() for word in ["my name is", "i am", "i like", "i prefer", "i work", "i live"]):
+        save_memory("user_info", user_message)
+    graph_json = None
+    if needs_graph(user_message):
+        graph_json = create_graph(user_message)
+    return jsonify({
+        "reply": reply,
+        "searched": bool(search_result),
+        "graph": graph_json
+    })
+
+@app.route("/correct", methods=["POST"])
+def correct():
+    correction = request.json.get("correction")
+    save_memory("correction", correction)
+    return jsonify({"status": "saved"})
+
+@app.route("/memories", methods=["GET"])
+def view_memories():
+    memories = get_memories()
+    return jsonify({"memories": [{"type": t, "content": c} for t, c in memories]})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port
