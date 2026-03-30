@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>My AI Bot</title>
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial; background: #1a1a2e; color: white; height: 100vh; display: flex; flex-direction: column; }
@@ -10,8 +11,10 @@
     #correction-count { background: #e94560; padding: 5px 12px; border-radius: 20px; font-size: 13px; }
     #chatbox { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
     .user-msg { background: #0f3460; padding: 12px 16px; border-radius: 12px; align-self: flex-end; max-width: 70%; }
-    .bot-msg { background: #16213e; padding: 12px 16px; border-radius: 12px; align-self: flex-start; max-width: 80%; border: 1px solid #00d4ff33; }
+    .bot-msg { background: #16213e; padding: 12px 16px; border-radius: 12px; align-self: flex-start; max-width: 85%; width: 85%; border: 1px solid #00d4ff33; }
     .searched-tag { font-size: 11px; color: #00d4ff; margin-bottom: 6px; }
+    .agent-tag { font-size: 11px; color: #00ff88; margin-bottom: 6px; }
+    .graph-container { width: 100%; height: 400px; margin-top: 10px; border-radius: 10px; overflow: hidden; }
     .correct-btn { background: none; border: 1px solid #666; color: #aaa; padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-top: 8px; }
     .correct-btn:hover { border-color: #e94560; color: #e94560; }
     #input-area { background: #16213e; padding: 15px 20px; display: flex; gap: 10px; }
@@ -27,12 +30,13 @@
   </header>
   <div id="chatbox"></div>
   <div id="input-area">
-    <input id="input" type="text" placeholder="Ask me anything — chat, code, search..." />
+    <input id="input" type="text" placeholder="Ask me anything — chat, code, search, graphs..." />
     <button id="send" onclick="sendMessage()">Send</button>
   </div>
 
   <script>
     let correctionCount = 0;
+    let graphCount = 0;
 
     async function sendMessage() {
       const input = document.getElementById("input");
@@ -40,41 +44,105 @@
       const message = input.value.trim();
       if (!message) return;
 
-      chatbox.innerHTML += `<div class="user-msg">${message}</div>`;
+      // Add user message
+      const userDiv = document.createElement("div");
+      userDiv.className = "user-msg";
+      userDiv.textContent = message;
+      chatbox.appendChild(userDiv);
       input.value = "";
-      chatbox.innerHTML += `<div class="bot-msg" id="thinking">⏳ Thinking...</div>`;
+
+      // Add thinking message
+      const thinkingDiv = document.createElement("div");
+      thinkingDiv.className = "bot-msg";
+      thinkingDiv.textContent = "⏳ Thinking...";
+      chatbox.appendChild(thinkingDiv);
       chatbox.scrollTop = chatbox.scrollHeight;
 
-      const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
 
-      const data = await res.json();
-      const thinking = document.getElementById("thinking");
+        const data = await res.json();
 
-      let html = "";
-      if (data.searched) html += `<div class="searched-tag">🌐 Web searched</div>`;
-      html += data.reply.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre>$2</pre>');
-      html += `<br><button class="correct-btn" onclick="correctThis(this)">✏️ Correct this</button>`;
+        // Clear thinking and build response
+        thinkingDiv.innerHTML = "";
 
-      thinking.innerHTML = html;
+        if (data.searched) {
+          const tag = document.createElement("div");
+          tag.className = "searched-tag";
+          tag.textContent = "🌐 Web searched";
+          thinkingDiv.appendChild(tag);
+        }
+
+        if (data.graph) {
+          const tag = document.createElement("div");
+          tag.className = "agent-tag";
+          tag.textContent = "📊 Data Analysis Agent";
+          thinkingDiv.appendChild(tag);
+        }
+
+        // Add text reply
+        const replyDiv = document.createElement("div");
+        replyDiv.innerHTML = data.reply.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre>$2</pre>');
+        thinkingDiv.appendChild(replyDiv);
+
+        // Add graph if present
+        if (data.graph) {
+          graphCount++;
+          const graphDiv = document.createElement("div");
+          graphDiv.className = "graph-container";
+          graphDiv.id = "graph-" + graphCount;
+          thinkingDiv.appendChild(graphDiv);
+
+          // Small delay to ensure DOM is ready
+          setTimeout(() => {
+            try {
+              const graphData = JSON.parse(data.graph);
+              Plotly.newPlot(
+                "graph-" + graphCount,
+                graphData.data,
+                {
+                  ...graphData.layout,
+                  paper_bgcolor: "rgba(0,0,0,0)",
+                  plot_bgcolor: "rgba(0,0,0,0)",
+                  font: { color: "white" }
+                },
+                { responsive: true }
+              );
+            } catch(e) {
+              graphDiv.textContent = "Could not render graph.";
+            }
+          }, 100);
+        }
+
+        // Add correct button
+        const btn = document.createElement("button");
+        btn.className = "correct-btn";
+        btn.textContent = "✏️ Correct this";
+        btn.onclick = function() { correctThis(btn); };
+        thinkingDiv.appendChild(document.createElement("br"));
+        thinkingDiv.appendChild(btn);
+
+      } catch(err) {
+        thinkingDiv.textContent = "Error: Could not get response. Please try again.";
+      }
+
       chatbox.scrollTop = chatbox.scrollHeight;
     }
 
     async function correctThis(btn) {
       const correction = prompt("What was wrong with this response?");
       if (!correction) return;
-
       await fetch("/correct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ correction })
       });
-
       correctionCount++;
-      document.getElementById("correction-count").textContent = `${correctionCount} corrections learned`;
+      document.getElementById("correction-count").textContent = correctionCount + " corrections learned";
       btn.textContent = "✅ Correction saved";
       btn.disabled = true;
     }
