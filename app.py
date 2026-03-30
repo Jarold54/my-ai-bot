@@ -81,14 +81,17 @@ def needs_search(message):
     return any(word in message.lower() for word in keywords)
 
 def needs_graph(message):
-    keywords = ["chart", "graph", "plot", "visualize", "bar chart", "pie chart", "line graph", "show data"]
+    keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
+                "show data", "diagram", "visual", "draw", "display data", "survey",
+                "histogram", "scatter", "compare data", "breakdown", "distribution"]
     return any(word in message.lower() for word in keywords)
 
 def create_graph(message, ai_response):
     try:
-        data_prompt = f"""Extract data from this request and return ONLY a JSON object like this:
+        data_prompt = f"""Extract data from this request and return ONLY a valid JSON object like this:
 {{"type": "bar", "labels": ["A","B","C"], "values": [1,2,3], "title": "Chart Title"}}
 Types can be: bar, line, pie
+Only return the JSON. No explanation. No markdown. No extra text.
 Request: {message}"""
         data_response = client.chat.completions.create(
             model=MODEL,
@@ -136,6 +139,7 @@ def chat():
     system_prompt = f"""You are a helpful AI assistant that can answer questions,
 write and debug code, analyze data, create graphs, and help with any task.
 You have long term memory and remember things from past conversations.
+When asked for a chart or graph do not create text charts, just describe the data briefly.
 Always be clear, accurate, and helpful.
 {memory_text}"""
     search_result = ""
