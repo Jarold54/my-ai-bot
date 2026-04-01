@@ -109,7 +109,6 @@ def create_graph(message, history_text=""):
         data_prompt = f"""
 You are a data extraction tool.
 
-Task:
 Extract chart data exactly from the user's request and conversation context.
 
 Return ONLY valid JSON.
@@ -118,19 +117,19 @@ No explanation.
 No extra text.
 
 Rules:
-- Use ONLY numbers explicitly given by the user.
-- Do NOT estimate, average, normalize, or invent values.
-- Do NOT change percentages.
-- If the request is for a pie chart, preserve the exact category-to-value mapping.
-- If data is missing or ambiguous, return:
-  {{"error": "Ambiguous or missing chart data"}}
+- Use ONLY numbers explicitly provided by the user.
+- Do NOT estimate, normalize, average, or invent values.
+- Keep percentages exactly as given.
+- Preserve the exact label-to-value mapping.
+- If the data is ambiguous or missing, return:
+{{"error": "Ambiguous or missing chart data"}}
 
 Return format:
 {{
   "type": "pie",
-  "labels": ["Label1", "Label2"],
-  "values": [50, 30],
-  "title": "Chart Title"
+  "labels": ["red", "yellow", "green"],
+  "values": [25, 25, 50],
+  "title": "Color Distribution"
 }}
 
 Conversation context:
@@ -184,8 +183,13 @@ User request:
             "values": cleaned_values
         })
 
+        print("GRAPH DATAFRAME:")
+        print(df)
+        print("PLOTLY VALUES:", cleaned_values)
+
         if chart_type == "pie":
             fig = px.pie(df, names="labels", values="values", title=title)
+            fig.update_traces(textinfo="percent+label")
         elif chart_type == "line":
             fig = px.line(df, x="labels", y="values", title=title, markers=True)
         else:
