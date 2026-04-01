@@ -13,45 +13,72 @@ app = Flask(__name__)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 MODEL = "llama-3.3-70b-versatile"
 
+
 def init_db():
-    conn = sqlite3.connect('memory.db')
+    conn = sqlite3.connect("memory.db")
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, content TEXT, timestamp TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, timestamp TEXT)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT,
+            content TEXT,
+            timestamp TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT,
+            content TEXT,
+            timestamp TEXT
+        )
+    """)
     conn.commit()
     conn.close()
+
 
 init_db()
 
+
 def save_memory(mtype, content):
-    conn = sqlite3.connect('memory.db')
+    conn = sqlite3.connect("memory.db")
     c = conn.cursor()
-    c.execute("INSERT INTO memories (type, content, timestamp) VALUES (?, ?, ?)", (mtype, content, str(datetime.datetime.now())))
+    c.execute(
+        "INSERT INTO memories (type, content, timestamp) VALUES (?, ?, ?)",
+        (mtype, content, str(datetime.datetime.now()))
+    )
     conn.commit()
     conn.close()
 
+
 def get_memories():
-    conn = sqlite3.connect('memory.db')
+    conn = sqlite3.connect("memory.db")
     c = conn.cursor()
     c.execute("SELECT type, content FROM memories ORDER BY timestamp DESC LIMIT 20")
     memories = c.fetchall()
     conn.close()
     return memories
 
+
 def save_conversation(role, content):
-    conn = sqlite3.connect('memory.db')
+    conn = sqlite3.connect("memory.db")
     c = conn.cursor()
-    c.execute("INSERT INTO conversations (role, content, timestamp) VALUES (?, ?, ?)", (role, content, str(datetime.datetime.now())))
+    c.execute(
+        "INSERT INTO conversations (role, content, timestamp) VALUES (?, ?, ?)",
+        (role, content, str(datetime.datetime.now()))
+    )
     conn.commit()
     conn.close()
 
+
 def get_recent_conversations():
-    conn = sqlite3.connect('memory.db')
+    conn = sqlite3.connect("memory.db")
     c = conn.cursor()
     c.execute("SELECT role, content FROM conversations ORDER BY timestamp DESC LIMIT 10")
     conversations = c.fetchall()
     conn.close()
     return list(reversed(conversations))
+
 
 def web_search(query):
     try:
@@ -63,94 +90,179 @@ def web_search(query):
         if not result:
             result = "Search performed for: " + query + ". No instant answer found."
         return result
-    except:
+    except Exception:
         return "Web search unavailable right now."
+
 
 def needs_search(message):
     keywords = ["latest", "today", "current", "news", "2026", "price", "now", "recent"]
     return any(word in message.lower() for word in keywords)
 
+
 def needs_graph(message):
-    keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
-                "show data", "diagram", "visual", "draw", "display data", "survey",
-                "histogram", "scatter", "compare data", "breakdown", "distribution"]
+    keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph", "histogram", "scatter"]
     return any(word in message.lower() for word in keywords)
 
-def create_graph(message):
+
+def create_graph(message, history_text=""):
     try:
-        data_prompt = "You are a data extraction tool. Extract chart data from the user request below. Return ONLY a valid JSON object. No explanation. No markdown. No extra text. CRITICAL: Use the EXACT numbers the user provided. Do NOT average them. Do NOT normalize them. Do NOT change them in any way. If user says 25 percent iron, 25 percent aluminum, 50 percent steel - values must be [25, 25, 50]. Return this exact format: {\"type\": \"pie\", \"labels\": [\"Label1\",\"Label2\"], \"values\": [50, 30], \"title\": \"Chart Title\"} Rules: type must be pie, bar, or line. Labels and values must match in length. Return ONLY the JSON object. User request: " + message
+        data_prompt = f"""
+You are a data extraction tool.
+
+Task:
+Extract chart data exactly from the user's request and conversation context.
+
+Return ONLY valid JSON.
+No markdown.
+No explanation.
+No extra text.
+
+Rules:
+- Use ONLY numbers explicitly given by the user.
+- Do NOT estimate, average, normalize, or invent values.
+- Do NOT change percentages.
+- If the request is for a pie chart, preserve the exact category-to-value mapping.
+- If data is missing or ambiguous, return:
+  {{"error": "Ambiguous or missing chart data"}}
+
+Return format:
+{{
+  "type": "pie",
+  "labels": ["Label1", "Label2"],
+  "values": [50, 30],
+  "title": "Chart Title"
+}}
+
+Conversation context:
+{history_text}
+
+User request:
+{message}
+"""
 
         data_response = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": data_prompt}],
-            max_tokens=500,
-            temperature=0.1
+            max_tokens=300,
+            temperature=0
         )
-        raw = data_response.choices[0].message.content
-        start = raw.find('{')
-        end = raw.rfind('}') + 1
-        clean = raw[start:end]
-        graph_data = json.loads(clean)
+
+        raw = data_response.choices[0].message.content.strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+
+        if start == -1 or end == 0:
+            return None
+
+        graph_data = json.loads(raw[start:end])
+
+        if "error" in graph_data:
+            return None
+
+        chart_type = graph_data.get("type", "").lower()
+        labels = graph_data.get("labels", [])
+        values = graph_data.get("values", [])
+        title = graph_data.get("title", "Chart")
+
+        if chart_type not in ["pie", "bar", "line"]:
+            return None
+
+        if not isinstance(labels, list) or not isinstance(values, list):
+            return None
+
+        if len(labels) != len(values) or len(labels) == 0:
+            return None
+
+        cleaned_values = []
+        for v in values:
+            if isinstance(v, str):
+                v = v.replace("%", "").strip()
+            cleaned_values.append(float(v))
+
         df = pd.DataFrame({
-            "labels": graph_data["labels"],
-            "values": graph_data["values"]
+            "labels": labels,
+            "values": cleaned_values
         })
-        if graph_data["type"] == "pie":
-            fig = px.pie(df, names="labels", values="values", title=graph_data["title"])
-        elif graph_data["type"] == "line":
-            fig = px.line(df, x="labels", y="values", title=graph_data["title"])
+
+        if chart_type == "pie":
+            fig = px.pie(df, names="labels", values="values", title=title)
+        elif chart_type == "line":
+            fig = px.line(df, x="labels", y="values", title=title, markers=True)
         else:
-            fig = px.bar(df, x="labels", y="values", title=graph_data["title"])
+            fig = px.bar(df, x="labels", y="values", title=title)
+
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font_color="white"
         )
+
         return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
     except Exception as e:
-        print("Graph error: " + str(e))
+        print("Graph error:", str(e))
         return None
+
 
 @app.route("/")
 def home():
     return render_template("chatbot.html")
 
+
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message")
+    user_message = request.json.get("message", "")
     memories = get_memories()
+
     memory_text = ""
     if memories:
         memory_text = "\n\nLong term memory (from past sessions):\n"
         for mem_type, mem_content in memories:
-            memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
+            memory_text += f"- [{mem_type}]: {mem_content}\n"
+
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory and remember things from past conversations. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear, accurate, and helpful." + memory_text
+    history_text = "\n".join([f"{role}: {content}" for role, content in recent_convos])
+
+    system_prompt = (
+        "You are a helpful AI assistant that can answer questions, write and debug code, "
+        "analyze data, create graphs, and help with any task. You have long term memory and "
+        "remember things from past conversations. When asked for a chart or graph do not create "
+        "text charts, just describe the data briefly. Always be clear, accurate, and helpful."
+        + memory_text
+    )
+
     search_result = ""
     if needs_search(user_message):
         search_result = web_search(user_message)
         user_message_with_context = user_message + "\n\n[Web search result: " + search_result + "]"
     else:
         user_message_with_context = user_message
+
     save_conversation("user", user_message)
+
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_message_with_context}],
         max_tokens=1024
     )
+
     reply = response.choices[0].message.content
     save_conversation("assistant", reply)
+
     if any(word in user_message.lower() for word in ["my name is", "i am", "i like", "i prefer", "i work", "i live"]):
         save_memory("user_info", user_message)
+
     graph_json = None
     if needs_graph(user_message):
-        graph_json = create_graph(user_message)
+        graph_json = create_graph(user_message, history_text)
+
     return jsonify({
         "reply": reply,
         "searched": bool(search_result),
         "graph": graph_json
     })
+
 
 @app.route("/correct", methods=["POST"])
 def correct():
@@ -158,10 +270,12 @@ def correct():
     save_memory("correction", correction)
     return jsonify({"status": "saved"})
 
+
 @app.route("/memories", methods=["GET"])
 def view_memories():
     memories = get_memories()
     return jsonify({"memories": [{"type": t, "content": c} for t, c in memories]})
 
+
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=8080, debug=True)
+    app.run(host="0.0.0.0", port=8080, debug=True)
