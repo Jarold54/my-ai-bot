@@ -78,7 +78,7 @@ def needs_graph(message):
 
 def create_graph(message):
     try:
-        data_prompt = "You are a data extraction tool. Extract chart data from the user request below.\nReturn ONLY a valid JSON object. No explanation. No markdown. No extra text whatsoever.\nUse the EXACT numbers the user provided. Do not change or normalize them.\n\nReturn this exact format:\n{\"type\": \"pie\", \"labels\": [\"Label1\",\"Label2\"], \"values\": [50, 30], \"title\": \"Chart Title\"}\n\nRules:\n- Use exact numbers from the request\n- type must be: pie, bar, or line\n- labels and values must match in length\n- Return ONLY the JSON object\n\nUser request: " + message
+        data_prompt = "You are a data extraction tool. Extract chart data from the user request below. Return ONLY a valid JSON object. No explanation. No markdown. No extra text. CRITICAL: Use the EXACT numbers the user provided. Do NOT average them. Do NOT normalize them. Do NOT change them in any way. If user says 25 percent iron, 25 percent aluminum, 50 percent steel - values must be [25, 25, 50]. Return this exact format: {\"type\": \"pie\", \"labels\": [\"Label1\",\"Label2\"], \"values\": [50, 30], \"title\": \"Chart Title\"} Rules: type must be pie, bar, or line. Labels and values must match in length. Return ONLY the JSON object. User request: " + message
 
         data_response = client.chat.completions.create(
             model=MODEL,
