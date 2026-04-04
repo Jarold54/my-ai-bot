@@ -80,23 +80,43 @@ def needs_graph(message):
 def extract_data(text):
     stop_words = {"pie", "bar", "line", "chart", "graph", "give", "me", "a", "an",
                   "with", "and", "the", "make", "into", "those", "please", "percent",
-                  "create", "show", "of", "for", "to", "is", "are", "was"}
+                  "create", "show", "of", "for", "to", "is", "are", "was", "pct"}
+    clean = re.sub(r'["\'\`]', '', text.lower().strip())
     results = []
-    clean = re.sub(r'["\'\`]', '', text.lower())
-    matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|pct|%)\s+([a-z]+)', clean)
-    for val, label in matches:
-        if label not in stop_words:
-            results.append((label.title(), float(val)))
-    if not results:
-        matches2 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s*(?:percent|pct|%)', clean)
-        for label, val in matches2:
+    p1 = re.findall(r'(\d+(?:\.\d+)?)\s*[%]\s*([a-z]+)', clean)
+    if p1:
+        for val, label in p1:
             if label not in stop_words:
                 results.append((label.title(), float(val)))
+        if results:
+            return results
+    p2 = re.findall(r'(\d+(?:\.\d+)?)\s+percent\s+([a-z]+)', clean)
+    if p2:
+        for val, label in p2:
+            if label not in stop_words:
+                results.append((label.title(), float(val)))
+        if results:
+            return results
+    p3 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s*[%]', clean)
+    if p3:
+        for label, val in p3:
+            if label not in stop_words:
+                results.append((label.title(), float(val)))
+        if results:
+            return results
+    p4 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s+percent', clean)
+    if p4:
+        for label, val in p4:
+            if label not in stop_words:
+                results.append((label.title(), float(val)))
+        if results:
+            return results
     return results
 
 def create_graph(message):
     try:
         data = extract_data(message)
+        print("Graph data extracted: " + str(data))
         if not data:
             return None
         labels = [d[0] for d in data]
