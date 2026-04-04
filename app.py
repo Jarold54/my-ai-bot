@@ -177,16 +177,4 @@ def view_memories():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
-```
 
----
-
-## 👉 Steps:
-1. **github.com/Jarold54/my-ai-bot** → `app.py` → ✏️
-2. Select ALL → delete → paste
-3. Scroll to bottom — confirm last line is complete
-4. Commit → Render **Manual Deploy**
-
-## Test with exactly:
-```
-pie chart 75 percent cyanide 20 percent ammonia 5 percent argon
