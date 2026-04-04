@@ -1,250 +1,172 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>My AI Bot</title>
-  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: Arial, sans-serif;
-      background: #1a1a2e;
-      color: white;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      background: #16213e;
-      padding: 15px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    h2 { color: #00d4ff; }
-    #correction-count {
-      background: #e94560;
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-size: 13px;
-    }
-    #chatbox {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .user-msg {
-      background: #0f3460;
-      padding: 12px 16px;
-      border-radius: 12px;
-      align-self: flex-end;
-      max-width: 70%;
-    }
-    .bot-msg {
-      background: #16213e;
-      padding: 12px 16px;
-      border-radius: 12px;
-      align-self: flex-start;
-      max-width: 85%;
-      width: 85%;
-      border: 1px solid #00d4ff33;
-    }
-    .searched-tag {
-      font-size: 11px;
-      color: #00d4ff;
-      margin-bottom: 6px;
-    }
-    .agent-tag {
-      font-size: 11px;
-      color: #00ff88;
-      margin-bottom: 6px;
-    }
-    .graph-container {
-      width: 100%;
-      height: 400px;
-      margin-top: 10px;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .correct-btn {
-      background: none;
-      border: 1px solid #666;
-      color: #aaa;
-      padding: 4px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 12px;
-      margin-top: 8px;
-    }
-    .correct-btn:hover {
-      border-color: #e94560;
-      color: #e94560;
-    }
-    #input-area {
-      background: #16213e;
-      padding: 15px 20px;
-      display: flex;
-      gap: 10px;
-    }
-    #input {
-      flex: 1;
-      background: #0f3460;
-      border: 1px solid #00d4ff44;
-      color: white;
-      padding: 12px;
-      border-radius: 10px;
-      font-size: 15px;
-    }
-    #send {
-      background: #00d4ff;
-      color: #1a1a2e;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    pre {
-      background: #0d0d0d;
-      padding: 10px;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin-top: 8px;
-      font-size: 13px;
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h2>My AI Bot</h2>
-    <span id="correction-count">0 corrections learned</span>
-  </header>
+from flask import Flask, render_template, request, jsonify
+import requests
+import json
+import os
+import sqlite3
+import datetime
+import re
+import pandas as pd
+import plotly.express as px
+import plotly.utils
+from groq import Groq
 
-  <div id="chatbox"></div>
+app = Flask(__name__)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+MODEL = "llama-3.3-70b-versatile"
 
-  <div id="input-area">
-    <input id="input" type="text" placeholder="Ask me anything - chat, code, search, graphs..." />
-    <button id="send" onclick="sendMessage()">Send</button>
-  </div>
+def init_db():
+    conn = sqlite3.connect('memory.db')
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, content TEXT, timestamp TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, timestamp TEXT)")
+    conn.commit()
+    conn.close()
 
-  <script>
-    let correctionCount = 0;
-    let graphCount = 0;
+init_db()
 
-    async function sendMessage() {
-      const input = document.getElementById("input");
-      const chatbox = document.getElementById("chatbox");
-      const message = input.value.trim();
+def save_memory(mtype, content):
+    conn = sqlite3.connect('memory.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO memories (type, content, timestamp) VALUES (?, ?, ?)", (mtype, content, str(datetime.datetime.now())))
+    conn.commit()
+    conn.close()
 
-      if (!message) return;
+def get_memories():
+    conn = sqlite3.connect('memory.db')
+    c = conn.cursor()
+    c.execute("SELECT type, content FROM memories ORDER BY timestamp DESC LIMIT 20")
+    memories = c.fetchall()
+    conn.close()
+    return memories
 
-      const userDiv = document.createElement("div");
-      userDiv.className = "user-msg";
-      userDiv.textContent = message;
-      chatbox.appendChild(userDiv);
-      input.value = "";
+def save_conversation(role, content):
+    conn = sqlite3.connect('memory.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO conversations (role, content, timestamp) VALUES (?, ?, ?)", (role, content, str(datetime.datetime.now())))
+    conn.commit()
+    conn.close()
 
-      const thinkingDiv = document.createElement("div");
-      thinkingDiv.className = "bot-msg";
-      thinkingDiv.textContent = "Thinking...";
-      chatbox.appendChild(thinkingDiv);
-      chatbox.scrollTop = chatbox.scrollHeight;
+def get_recent_conversations():
+    conn = sqlite3.connect('memory.db')
+    c = conn.cursor()
+    c.execute("SELECT role, content FROM conversations ORDER BY timestamp DESC LIMIT 10")
+    conversations = c.fetchall()
+    conn.close()
+    return list(reversed(conversations))
 
-      try {
-        const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message })
-        });
+def web_search(query):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://api.duckduckgo.com/?q=" + query + "&format=json&no_html=1"
+        response = requests.get(url, headers=headers, timeout=5)
+        data = response.json()
+        result = data.get("AbstractText", "")
+        if not result:
+            result = "Search performed for: " + query + ". No instant answer found."
+        return result
+    except:
+        return "Web search unavailable right now."
 
-        const data = await res.json();
-        thinkingDiv.innerHTML = "";
+def needs_search(message):
+    keywords = ["latest", "today", "current", "news", "2026", "price", "now", "recent"]
+    return any(word in message.lower() for word in keywords)
 
-        if (data.searched) {
-          const tag = document.createElement("div");
-          tag.className = "searched-tag";
-          tag.textContent = "Web searched";
-          thinkingDiv.appendChild(tag);
-        }
+def needs_graph(message):
+    keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
+                "show data", "diagram", "visual", "draw", "display data", "survey",
+                "histogram", "scatter", "compare data", "breakdown", "distribution"]
+    return any(word in message.lower() for word in keywords)
 
-        if (data.graph) {
-          const tag = document.createElement("div");
-          tag.className = "agent-tag";
-          tag.textContent = "Data Analysis Agent";
-          thinkingDiv.appendChild(tag);
-        }
+def create_graph(message):
+    try:
+        pattern1 = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|%)\s+(\w+(?:\s+\w+)?)', message.lower())
+        pattern2 = re.findall(r'(\w+(?:\s+\w+)?)\s+(\d+(?:\.\d+)?)\s*(?:percent|%)', message.lower())
 
-        const replyDiv = document.createElement("div");
-        replyDiv.innerHTML = data.reply.replace(/```(\w+)?\n([\s\S]*?)```/g, "<pre>$2</pre>");
-        thinkingDiv.appendChild(replyDiv);
+        if pattern1:
+            values = [float(n[0]) for n in pattern1]
+            labels = [n[1].strip().title() for n in pattern1]
+        elif pattern2:
+            labels = [n[0].strip().title() for n in pattern2]
+            values = [float(n[1]) for n in pattern2]
+        else:
+            return None
 
-        if (data.graph) {
-          graphCount++;
-          const currentGraphId = "graph-" + graphCount;
+        stop_words = ["pie", "bar", "line", "chart", "graph", "give", "me", "a", "with", "and", "the", "make"]
+        labels = [l for l in labels if l.lower() not in stop_words]
+        values = values[:len(labels)]
 
-          const graphDiv = document.createElement("div");
-          graphDiv.className = "graph-container";
-          graphDiv.id = currentGraphId;
-          thinkingDiv.appendChild(graphDiv);
+        chart_type = "pie"
+        if any(word in message.lower() for word in ["bar chart", "bar graph", "column"]):
+            chart_type = "bar"
+        elif any(word in message.lower() for word in ["line graph", "line chart", "trend"]):
+            chart_type = "line"
 
-          setTimeout(() => {
-            try {
-              if (!data.graph.data || !data.graph.data.length) {
-                graphDiv.textContent = "Could not render graph: missing chart data.";
-                return;
-              }
+        df = pd.DataFrame({"labels": labels, "values": values})
 
-              Plotly.newPlot(
-                currentGraphId,
-                data.graph.data,
-                data.graph.layout || {},
-                { responsive: true }
-              );
-            } catch (e) {
-              console.error("Graph render error:", e);
-              graphDiv.textContent = "Could not render graph.";
-            }
-          }, 50);
-        }
+        if chart_type == "pie":
+            fig = px.pie(df, names="labels", values="values", title="Chart")
+        elif chart_type == "line":
+            fig = px.line(df, x="labels", y="values", title="Chart")
+        else:
+            fig = px.bar(df, x="labels", y="values", title="Chart")
 
-        const btn = document.createElement("button");
-        btn.className = "correct-btn";
-        btn.textContent = "Correct this";
-        btn.onclick = function() { correctThis(btn); };
-        thinkingDiv.appendChild(document.createElement("br"));
-        thinkingDiv.appendChild(btn);
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="white"
+        )
+        return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    except Exception as e:
+        print("Graph error: " + str(e))
+        return None
 
-      } catch (err) {
-        console.error(err);
-        thinkingDiv.textContent = "Error: Could not get response. Please try again.";
-      }
+@app.route("/")
+def home():
+    return render_template("chatbot.html")
 
-      chatbox.scrollTop = chatbox.scrollHeight;
-    }
+@app.route("/chat", methods=["POST"])
+def chat():
+    user_message = request.json.get("message")
+    memories = get_memories()
+    memory_text = ""
+    if memories:
+        memory_text = "\n\nLong term memory (from past sessions):\n"
+        for mem_type, mem_content in memories:
+            memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
+    recent_convos = get_recent_conversations()
+    history = [{"role": role, "content": content} for role, content in recent_convos]
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory and remember things from past conversations. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear, accurate, and helpful." + memory_text
+    search_result = ""
+    if needs_search(user_message):
+        search_result = web_search(user_message)
+        user_message_with_context = user_message + "\n\n[Web search result: " + search_result + "]"
+    else:
+        user_message_with_context = user_message
+    save_conversation("user", user_message)
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_message_with_context}],
+        max_tokens=1024
+    )
+    reply = response.choices[0].message.content
+    save_conversation("assistant", reply)
+    if any(word in user_message.lower() for word in ["my name is", "i am", "i like", "i prefer", "i work", "i live"]):
+        save_memory("user_info", user_message)
+    graph_json = None
+    if needs_graph(user_message):
+        graph_json = create_graph(user_message)
+    return jsonify({"reply": reply, "searched": bool(search_result), "graph": graph_json})
 
-    async function correctThis(btn) {
-      const correction = prompt("What was wrong with this response?");
-      if (!correction) return;
+@app.route("/correct", methods=["POST"])
+def correct():
+    correction = request.json.get("correction")
+    save_memory("correction", correction)
+    return jsonify({"status": "saved"})
 
-      await fetch("/correct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correction })
-      });
+@app.route("/memories", methods=["GET"])
+def view_memories():
+    memories = get_memories()
+    return jsonify({"memories": [{"type": t, "content": c} for t, c in memories]})
 
-      correctionCount++;
-      document.getElementById("correction-count").textContent =
-        correctionCount + " corrections learned";
-      btn.textContent = "Correction saved";
-      btn.disabled = true;
-    }
-
-    document.getElementById("input").addEventListener("keypress", e => {
-      if (e.key === "Enter") sendMessage();
-    });
-  </script>
-</body>
-</html>
-
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=True)
