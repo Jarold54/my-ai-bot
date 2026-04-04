@@ -77,54 +77,44 @@ def needs_graph(message):
                 "histogram", "scatter", "compare data", "breakdown", "distribution"]
     return any(word in message.lower() for word in keywords)
 
+def extract_data(text):
+    stop_words = {"pie", "bar", "line", "chart", "graph", "give", "me", "a", "an",
+                  "with", "and", "the", "make", "into", "those", "please", "percent",
+                  "create", "show", "of", "for", "to", "is", "are", "was"}
+    results = []
+    clean = re.sub(r'["\'\`]', '', text.lower())
+    matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|pct|%)\s+([a-z]+)', clean)
+    for val, label in matches:
+        if label not in stop_words:
+            results.append((label.title(), float(val)))
+    if not results:
+        matches2 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s*(?:percent|pct|%)', clean)
+        for label, val in matches2:
+            if label not in stop_words:
+                results.append((label.title(), float(val)))
+    return results
+
 def create_graph(message):
     try:
+        data = extract_data(message)
+        if not data:
+            return None
+        labels = [d[0] for d in data]
+        values = [d[1] for d in data]
         msg = message.lower()
-        stop_words = ["pie", "bar", "line", "chart", "graph", "give", "me", "a",
-                      "with", "and", "the", "make", "into", "those", "percent", "please"]
-
-        pattern1 = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|%)\s*([a-zA-Z]+)', msg)
-        pattern2 = re.findall(r'([a-zA-Z]+)\s+(\d+(?:\.\d+)?)\s*(?:percent|%)', msg)
-
-        if pattern1:
-            values = [float(n[0]) for n in pattern1]
-            labels = [n[1].strip().title() for n in pattern1]
-        elif pattern2:
-            labels = [n[0].strip().title() for n in pattern2]
-            values = [float(n[1]) for n in pattern2]
-        else:
-            return None
-
-        filtered_labels = []
-        filtered_values = []
-        for i, label in enumerate(labels):
-            if label.lower() not in stop_words and i < len(values):
-                filtered_labels.append(label)
-                filtered_values.append(values[i])
-
-        if not filtered_labels:
-            return None
-
         chart_type = "pie"
-        if any(word in msg for word in ["bar chart", "bar graph", "column"]):
+        if "bar" in msg:
             chart_type = "bar"
-        elif any(word in msg for word in ["line graph", "line chart", "trend"]):
+        elif "line" in msg:
             chart_type = "line"
-
-        df = pd.DataFrame({"labels": filtered_labels, "values": filtered_values})
-
+        df = pd.DataFrame({"labels": labels, "values": values})
         if chart_type == "pie":
             fig = px.pie(df, names="labels", values="values", title="Chart")
         elif chart_type == "line":
             fig = px.line(df, x="labels", y="values", title="Chart")
         else:
             fig = px.bar(df, x="labels", y="values", title="Chart")
-
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="white"
-        )
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="white")
         return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
     except Exception as e:
         print("Graph error: " + str(e))
@@ -140,12 +130,12 @@ def chat():
     memories = get_memories()
     memory_text = ""
     if memories:
-        memory_text = "\n\nLong term memory (from past sessions):\n"
+        memory_text = "\n\nLong term memory:\n"
         for mem_type, mem_content in memories:
             memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory and remember things from past conversations. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear, accurate, and helpful." + memory_text
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear and helpful." + memory_text
     search_result = ""
     if needs_search(user_message):
         search_result = web_search(user_message)
@@ -187,3 +177,16 @@ def view_memories():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
+```
+
+---
+
+## 👉 Steps:
+1. **github.com/Jarold54/my-ai-bot** → `app.py` → ✏️
+2. Select ALL → delete → paste
+3. Scroll to bottom — confirm last line is complete
+4. Commit → Render **Manual Deploy**
+
+## Test with exactly:
+```
+pie chart 75 percent cyanide 20 percent ammonia 5 percent argon
