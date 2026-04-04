@@ -79,8 +79,12 @@ def needs_graph(message):
 
 def create_graph(message):
     try:
-        pattern1 = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|%)\s+(\w+(?:\s+\w+)?)', message.lower())
-        pattern2 = re.findall(r'(\w+(?:\s+\w+)?)\s+(\d+(?:\.\d+)?)\s*(?:percent|%)', message.lower())
+        msg = message.lower()
+        stop_words = ["pie", "bar", "line", "chart", "graph", "give", "me", "a",
+                      "with", "and", "the", "make", "into", "those", "percent", "please"]
+
+        pattern1 = re.findall(r'(\d+(?:\.\d+)?)\s*(?:percent|%)\s*([a-zA-Z]+)', msg)
+        pattern2 = re.findall(r'([a-zA-Z]+)\s+(\d+(?:\.\d+)?)\s*(?:percent|%)', msg)
 
         if pattern1:
             values = [float(n[0]) for n in pattern1]
@@ -91,17 +95,23 @@ def create_graph(message):
         else:
             return None
 
-        stop_words = ["pie", "bar", "line", "chart", "graph", "give", "me", "a", "with", "and", "the", "make"]
-        labels = [l for l in labels if l.lower() not in stop_words]
-        values = values[:len(labels)]
+        filtered_labels = []
+        filtered_values = []
+        for i, label in enumerate(labels):
+            if label.lower() not in stop_words and i < len(values):
+                filtered_labels.append(label)
+                filtered_values.append(values[i])
+
+        if not filtered_labels:
+            return None
 
         chart_type = "pie"
-        if any(word in message.lower() for word in ["bar chart", "bar graph", "column"]):
+        if any(word in msg for word in ["bar chart", "bar graph", "column"]):
             chart_type = "bar"
-        elif any(word in message.lower() for word in ["line graph", "line chart", "trend"]):
+        elif any(word in msg for word in ["line graph", "line chart", "trend"]):
             chart_type = "line"
 
-        df = pd.DataFrame({"labels": labels, "values": values})
+        df = pd.DataFrame({"labels": filtered_labels, "values": filtered_values})
 
         if chart_type == "pie":
             fig = px.pie(df, names="labels", values="values", title="Chart")
@@ -154,7 +164,14 @@ def chat():
         save_memory("user_info", user_message)
     graph_json = None
     if needs_graph(user_message):
-        graph_json = create_graph(user_message)
+        full_context = user_message
+        if not any(char.isdigit() for char in user_message):
+            recent = get_recent_conversations()
+            for role, content in reversed(recent):
+                if any(char.isdigit() for char in content):
+                    full_context = content + " " + user_message
+                    break
+        graph_json = create_graph(full_context)
     return jsonify({"reply": reply, "searched": bool(search_result), "graph": graph_json})
 
 @app.route("/correct", methods=["POST"])
