@@ -79,38 +79,32 @@ def needs_graph(message):
 
 def extract_data(text):
     stop_words = {"pie", "bar", "line", "chart", "graph", "give", "me", "a", "an",
-                  "with", "and", "the", "make", "into", "those", "please", "percent",
-                  "create", "show", "of", "for", "to", "is", "are", "was", "pct"}
-    clean = re.sub(r'["\'\`]', '', text.lower().strip())
+                  "with", "and", "the", "make", "into", "those", "please",
+                  "create", "show", "of", "for", "to", "is", "are", "was", "pct", "percent"}
     results = []
-    p1 = re.findall(r'(\d+(?:\.\d+)?)\s*[%]\s*([a-z]+)', clean)
-    if p1:
-        for val, label in p1:
-            if label not in stop_words:
-                results.append((label.title(), float(val)))
-        if results:
-            return results
-    p2 = re.findall(r'(\d+(?:\.\d+)?)\s+percent\s+([a-z]+)', clean)
-    if p2:
-        for val, label in p2:
-            if label not in stop_words:
-                results.append((label.title(), float(val)))
-        if results:
-            return results
-    p3 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s*[%]', clean)
-    if p3:
-        for label, val in p3:
-            if label not in stop_words:
-                results.append((label.title(), float(val)))
-        if results:
-            return results
-    p4 = re.findall(r'([a-z]+)\s+(\d+(?:\.\d+)?)\s+percent', clean)
-    if p4:
-        for label, val in p4:
-            if label not in stop_words:
-                results.append((label.title(), float(val)))
-        if results:
-            return results
+    clean = text.lower().strip()
+    clean = clean.replace("%", " percent ")
+    words = clean.split()
+    i = 0
+    while i < len(words):
+        word = words[i]
+        is_number = False
+        try:
+            num = float(word)
+            is_number = True
+        except:
+            pass
+        if is_number:
+            if i + 1 < len(words) and words[i+1] == "percent":
+                if i + 2 < len(words) and words[i+2] not in stop_words:
+                    results.append((words[i+2].title(), num))
+                    i += 3
+                    continue
+            elif i + 1 < len(words) and words[i+1] not in stop_words and words[i+1] != "percent":
+                results.append((words[i+1].title(), num))
+                i += 2
+                continue
+        i += 1
     return results
 
 def create_graph(message):
