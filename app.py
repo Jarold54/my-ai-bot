@@ -132,11 +132,11 @@ def needs_image(message):
     return any(word in message.lower() for word in keywords)
 
 def needs_graph(message):
+    if needs_image(message):
+        return False
     keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
                 "show data", "diagram", "display data", "survey", "histogram",
                 "scatter", "compare data", "breakdown", "distribution"]
-    return any(word in message.lower() for word in keywords)
-
 def extract_data(text):
     stop_words = {"pie", "bar", "line", "chart", "graph", "give", "me", "a", "an",
                   "with", "and", "the", "make", "into", "those", "please",
