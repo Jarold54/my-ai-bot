@@ -107,6 +107,14 @@ def deep_research(query):
         pass
     return results
 
+def generate_image(prompt):
+    try:
+        clean_prompt = prompt.replace(" ", "%20")
+        image_url = "https://image.pollinations.ai/prompt/" + clean_prompt + "?width=800&height=600&nologo=true"
+        return image_url
+    except:
+        return None
+
 def needs_search(message):
     keywords = ["latest", "today", "current", "news", "2026", "price", "now", "recent"]
     return any(word in message.lower() for word in keywords)
@@ -117,10 +125,16 @@ def needs_deep_research(message):
                 "deep research", "full report", "detailed info", "explain in detail"]
     return any(word in message.lower() for word in keywords)
 
+def needs_image(message):
+    keywords = ["generate image", "create image", "make image", "draw", "generate a picture",
+                "create a picture", "make a picture", "show me a picture", "generate art",
+                "create art", "make art", "image of", "picture of", "photo of", "illustrate"]
+    return any(word in message.lower() for word in keywords)
+
 def needs_graph(message):
     keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
-                "show data", "diagram", "visual", "draw", "display data", "survey",
-                "histogram", "scatter", "compare data", "breakdown", "distribution"]
+                "show data", "diagram", "display data", "survey", "histogram",
+                "scatter", "compare data", "breakdown", "distribution"]
     return any(word in message.lower() for word in keywords)
 
 def extract_data(text):
@@ -156,7 +170,6 @@ def extract_data(text):
 def create_graph(message):
     try:
         data = extract_data(message)
-        print("Extracted: " + str(data))
         if not data:
             return None
         labels = [d[0] for d in data]
@@ -171,6 +184,18 @@ def create_graph(message):
     except Exception as e:
         print("Graph error: " + str(e))
         return None
+
+def extract_image_prompt(message):
+    lower = message.lower()
+    triggers = ["generate image of", "create image of", "make image of", "draw",
+                "generate a picture of", "create a picture of", "make a picture of",
+                "show me a picture of", "generate art of", "create art of",
+                "image of", "picture of", "photo of", "illustrate"]
+    for trigger in triggers:
+        if trigger in lower:
+            idx = lower.find(trigger) + len(trigger)
+            return message[idx:].strip()
+    return message
 
 @app.route("/")
 def home():
@@ -187,11 +212,16 @@ def chat():
             memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, do deep research, and help with any task. You have long term memory. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear and helpful." + memory_text
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, do deep research, generate images, and help with any task. You have long term memory. When asked for a chart do not create text charts. When generating an image tell the user it is being generated. Always be clear and helpful." + memory_text
     search_result = ""
     research_result = ""
     research_sources = []
-    if needs_deep_research(user_message):
+    image_url = None
+    if needs_image(user_message):
+        image_prompt = extract_image_prompt(user_message)
+        image_url = generate_image(image_prompt)
+        user_message_with_context = user_message
+    elif needs_deep_research(user_message):
         research_data = deep_research(user_message)
         if research_data.get("main"):
             research_result += "Main: " + research_data["main"] + " "
@@ -231,7 +261,7 @@ def chat():
                     full_context = content + " " + user_message
                     break
         graph_json = create_graph(full_context)
-    return jsonify({"reply": reply, "searched": bool(search_result), "researched": bool(research_result), "sources": research_sources, "graph": graph_json})
+    return jsonify({"reply": reply, "searched": bool(search_result), "researched": bool(research_result), "sources": research_sources, "graph": graph_json, "image_url": image_url})
 
 @app.route("/correct", methods=["POST"])
 def correct():
@@ -246,4 +276,3 @@ def view_memories():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
-
