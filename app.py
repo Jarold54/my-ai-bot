@@ -67,8 +67,54 @@ def web_search(query):
     except:
         return "Web search unavailable right now."
 
+def deep_research(query):
+    results = {}
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://api.duckduckgo.com/?q=" + query + "&format=json&no_html=1"
+        r = requests.get(url, headers=headers, timeout=5)
+        data = r.json()
+        abstract = data.get("AbstractText", "")
+        abstract_source = data.get("AbstractSource", "")
+        related = data.get("RelatedTopics", [])
+        related_texts = []
+        for topic in related[:5]:
+            if isinstance(topic, dict) and "Text" in topic:
+                related_texts.append(topic["Text"])
+        if abstract:
+            results["main"] = abstract
+            results["source"] = abstract_source
+        if related_texts:
+            results["related"] = related_texts
+    except:
+        pass
+    try:
+        wiki_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + query.replace(" ", "_")
+        r = requests.get(wiki_url, timeout=5)
+        if r.status_code == 200:
+            wiki_data = r.json()
+            results["wikipedia"] = wiki_data.get("extract", "")[:500]
+    except:
+        pass
+    try:
+        news_url = "https://api.duckduckgo.com/?q=" + query + "+news&format=json&no_html=1"
+        r = requests.get(news_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        news_data = r.json()
+        news_text = news_data.get("AbstractText", "")
+        if news_text:
+            results["news"] = news_text
+    except:
+        pass
+    return results
+
 def needs_search(message):
     keywords = ["latest", "today", "current", "news", "2026", "price", "now", "recent"]
+    return any(word in message.lower() for word in keywords)
+
+def needs_deep_research(message):
+    keywords = ["research", "deep search", "find out", "investigate", "look into",
+                "tell me everything", "what do you know about", "analyze", "study",
+                "deep research", "full report", "detailed info", "explain in detail"]
     return any(word in message.lower() for word in keywords)
 
 def needs_graph(message):
@@ -125,6 +171,7 @@ def create_graph(message):
     except Exception as e:
         print("Graph error: " + str(e))
         return None
+
 @app.route("/")
 def home():
     return render_template("chatbot.html")
@@ -140,9 +187,26 @@ def chat():
             memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, and help with any task. You have long term memory. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear and helpful." + memory_text
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, do deep research, and help with any task. You have long term memory. When asked for a chart or graph do not create text charts, just describe the data briefly. Always be clear and helpful." + memory_text
     search_result = ""
-    if needs_search(user_message):
+    research_result = ""
+    research_sources = []
+    if needs_deep_research(user_message):
+        research_data = deep_research(user_message)
+        if research_data.get("main"):
+            research_result += "Main: " + research_data["main"] + " "
+            if research_data.get("source"):
+                research_sources.append(research_data["source"])
+        if research_data.get("wikipedia"):
+            research_result += "Wikipedia: " + research_data["wikipedia"] + " "
+            research_sources.append("Wikipedia")
+        if research_data.get("news"):
+            research_result += "News: " + research_data["news"] + " "
+            research_sources.append("DuckDuckGo News")
+        if research_data.get("related"):
+            research_result += "Related: " + " | ".join(research_data["related"][:3])
+        user_message_with_context = user_message + "\n\n[Deep Research Results: " + research_result + "]"
+    elif needs_search(user_message):
         search_result = web_search(user_message)
         user_message_with_context = user_message + "\n\n[Web search result: " + search_result + "]"
     else:
@@ -167,7 +231,7 @@ def chat():
                     full_context = content + " " + user_message
                     break
         graph_json = create_graph(full_context)
-    return jsonify({"reply": reply, "searched": bool(search_result), "graph": graph_json})
+    return jsonify({"reply": reply, "searched": bool(search_result), "researched": bool(research_result), "sources": research_sources, "graph": graph_json})
 
 @app.route("/correct", methods=["POST"])
 def correct():
@@ -182,5 +246,4 @@ def view_memories():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
-    
 
