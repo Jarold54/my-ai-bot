@@ -110,30 +110,21 @@ def extract_data(text):
 def create_graph(message):
     try:
         data = extract_data(message)
-        print("Graph data extracted: " + str(data))
+        print("Extracted: " + str(data))
         if not data:
             return None
         labels = [d[0] for d in data]
         values = [d[1] for d in data]
-        msg = message.lower()
         chart_type = "pie"
+        msg = message.lower()
         if "bar" in msg:
             chart_type = "bar"
         elif "line" in msg:
             chart_type = "line"
-        df = pd.DataFrame({"labels": labels, "values": values})
-        if chart_type == "pie":
-            fig = px.pie(df, names="labels", values="values", title="Chart")
-        elif chart_type == "line":
-            fig = px.line(df, x="labels", y="values", title="Chart")
-        else:
-            fig = px.bar(df, x="labels", y="values", title="Chart")
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="white")
-        return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        return json.dumps({"labels": labels, "values": values, "type": chart_type})
     except Exception as e:
         print("Graph error: " + str(e))
         return None
-
 @app.route("/")
 def home():
     return render_template("chatbot.html")
