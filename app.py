@@ -109,11 +109,18 @@ def deep_research(query):
 
 def generate_image(prompt):
     try:
-        clean_prompt = prompt.replace(" ", "%20")
-        image_url = "https://image.pollinations.ai/prompt/" + clean_prompt + "?width=800&height=600&nologo=true"
+        clean_prompt = prompt.strip().replace(" ", "%20")
+        image_url = "https://image.pollinations.ai/prompt/" + clean_prompt + "?width=800&height=600&nologo=true&seed=" + str(hash(prompt) % 10000)
         return image_url
     except:
         return None
+
+def needs_image(message):
+    keywords = ["generate image", "create image", "make image", "generate a picture",
+                "create a picture", "make a picture", "show me a picture", "generate art",
+                "create art", "make art", "image of", "picture of", "photo of",
+                "illustrate", "draw me", "draw a", "paint a", "paint me"]
+    return any(word in message.lower() for word in keywords)
 
 def needs_search(message):
     keywords = ["latest", "today", "current", "news", "2026", "price", "now", "recent"]
@@ -125,18 +132,14 @@ def needs_deep_research(message):
                 "deep research", "full report", "detailed info", "explain in detail"]
     return any(word in message.lower() for word in keywords)
 
-def needs_image(message):
-    keywords = ["generate image", "create image", "make image", "draw", "generate a picture",
-                "create a picture", "make a picture", "show me a picture", "generate art",
-                "create art", "make art", "image of", "picture of", "photo of", "illustrate"]
-    return any(word in message.lower() for word in keywords)
-
 def needs_graph(message):
     if needs_image(message):
         return False
     keywords = ["chart", "graph", "plot", "visualize", "bar", "pie", "line graph",
                 "show data", "diagram", "display data", "survey", "histogram",
                 "scatter", "compare data", "breakdown", "distribution"]
+    return any(word in message.lower() for word in keywords)
+
 def extract_data(text):
     stop_words = {"pie", "bar", "line", "chart", "graph", "give", "me", "a", "an",
                   "with", "and", "the", "make", "into", "those", "please",
@@ -187,10 +190,11 @@ def create_graph(message):
 
 def extract_image_prompt(message):
     lower = message.lower()
-    triggers = ["generate image of", "create image of", "make image of", "draw",
+    triggers = ["generate image of", "create image of", "make image of",
                 "generate a picture of", "create a picture of", "make a picture of",
                 "show me a picture of", "generate art of", "create art of",
-                "image of", "picture of", "photo of", "illustrate"]
+                "image of", "picture of", "photo of", "draw me a", "draw a",
+                "paint a", "paint me a", "illustrate"]
     for trigger in triggers:
         if trigger in lower:
             idx = lower.find(trigger) + len(trigger)
@@ -212,7 +216,7 @@ def chat():
             memory_text += "- [" + mem_type + "]: " + mem_content + "\n"
     recent_convos = get_recent_conversations()
     history = [{"role": role, "content": content} for role, content in recent_convos]
-    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, do deep research, generate images, and help with any task. You have long term memory. When asked for a chart do not create text charts. When generating an image tell the user it is being generated. Always be clear and helpful." + memory_text
+    system_prompt = "You are a helpful AI assistant that can answer questions, write and debug code, analyze data, create graphs, do deep research, generate images, and help with any task. You have long term memory. When asked for a chart do not create text charts. When generating an image just say the image is ready below. Do not say you cannot display images. Always be clear and helpful." + memory_text
     search_result = ""
     research_result = ""
     research_sources = []
