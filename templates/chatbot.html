@@ -16,8 +16,11 @@
     .searched-tag { background: #00d4ff22; color: #00d4ff; }
     .agent-tag { background: #00ff8822; color: #00ff88; }
     .research-tag { background: #ff880022; color: #ff8800; }
+    .image-tag { background: #ff00ff22; color: #ff88ff; }
     .sources-tag { font-size: 11px; color: #888; margin-bottom: 8px; padding: 2px 8px; display: block; }
     .graph-container { width: 100%; height: 420px; margin-top: 12px; border-radius: 10px; overflow: hidden; background: rgba(0,0,0,0.2); }
+    .generated-image { width: 100%; max-width: 600px; border-radius: 12px; margin-top: 12px; border: 1px solid #00d4ff33; }
+    .image-loading { color: #888; font-size: 13px; margin-top: 8px; }
     .correct-btn { background: none; border: 1px solid #444; color: #888; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-top: 10px; transition: all 0.2s; }
     .correct-btn:hover { border-color: #e94560; color: #e94560; }
     .correct-btn:disabled { opacity: 0.5; cursor: default; }
@@ -28,7 +31,6 @@
     #send:hover { background: #00b8d9; }
     #send:disabled { background: #555; cursor: default; }
     pre { background: #0d0d0d; padding: 12px; border-radius: 8px; overflow-x: auto; margin-top: 10px; font-size: 13px; border: 1px solid #333; }
-    .thinking-dots { display: inline-block; }
     .thinking-dots span { animation: blink 1.4s infinite; opacity: 0; }
     .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
     .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
@@ -44,10 +46,10 @@
     <span id="correction-count">0 corrections learned</span>
   </header>
   <div id="chatbox">
-    <div class="bot-msg">👋 Hi! I can help you with anything — chat, code, web search, deep research, and data graphs. Try asking me something!</div>
+    <div class="bot-msg">👋 Hi! I can chat, write code, search the web, do deep research, create graphs, and generate images! Try asking me something!</div>
   </div>
   <div id="input-area">
-    <input id="input" type="text" placeholder="Ask me anything — chat, code, search, research, graphs..." />
+    <input id="input" type="text" placeholder="Chat, code, search, research, graphs, or generate images..." />
     <button id="send" onclick="sendMessage()">Send</button>
   </div>
 
@@ -109,6 +111,13 @@
           }
         }
 
+        if (data.image_url) {
+          const tag = document.createElement("div");
+          tag.className = "tag image-tag";
+          tag.textContent = "🎨 Image Generation Agent";
+          thinkingDiv.appendChild(tag);
+        }
+
         if (data.graph) {
           const tag = document.createElement("div");
           tag.className = "tag agent-tag";
@@ -125,13 +134,31 @@
           .replace(/\n/g, "<br>");
         thinkingDiv.appendChild(replyDiv);
 
+        if (data.image_url) {
+          const loadingText = document.createElement("div");
+          loadingText.className = "image-loading";
+          loadingText.textContent = "🎨 Generating image...";
+          thinkingDiv.appendChild(loadingText);
+          const img = document.createElement("img");
+          img.className = "generated-image";
+          img.src = data.image_url;
+          img.alt = "Generated image";
+          img.onload = function() {
+            loadingText.remove();
+            chatbox.scrollTop = chatbox.scrollHeight;
+          };
+          img.onerror = function() {
+            loadingText.textContent = "Could not generate image. Try a different description.";
+          };
+          thinkingDiv.appendChild(img);
+        }
+
         if (data.graph) {
           graphCount++;
           const graphDiv = document.createElement("div");
           graphDiv.className = "graph-container";
           graphDiv.id = "graph-" + graphCount;
           thinkingDiv.appendChild(graphDiv);
-
           setTimeout(() => {
             try {
               const graphData = JSON.parse(data.graph);
