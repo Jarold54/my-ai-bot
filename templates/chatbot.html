@@ -152,48 +152,37 @@
           };
           thinkingDiv.appendChild(img);
         }
-
-        if (data.graph) {
-          graphCount++;
-          const graphDiv = document.createElement("div");
-          graphDiv.className = "graph-container";
-          graphDiv.id = "graph-" + graphCount;
-          thinkingDiv.appendChild(graphDiv);
-          setTimeout(() => {
-            try {
-              const graphData = JSON.parse(data.graph);
-              const labels = graphData.labels;
-              const values = graphData.values;
-              const type = graphData.type;
-              let trace;
-              if (type === "pie") {
-                trace = [{type: "pie", labels: labels, values: values, textinfo: "label+percent", hole: 0.3}];
-              } else if (type === "line") {
-                trace = [{type: "scatter", mode: "lines+markers", x: labels, y: values, line: {color: "#00d4ff"}}];
-              } else {
-                trace = [{type: "bar", x: labels, y: values, marker: {color: "#00d4ff"}}];
-              }
-              const layout = {
-                paper_bgcolor: "rgba(0,0,0,0)",
-                plot_bgcolor: "rgba(0,0,0,0)",
-                font: {color: "white"},
-                margin: {t: 30, b: 40, l: 40, r: 20}
-              };
-              Plotly.newPlot("graph-" + graphCount, trace, layout, {responsive: true, displayModeBar: false});
-            } catch(e) {
-              document.getElementById("graph-" + graphCount).textContent = "Could not render graph.";
-            }
-          }, 200);
-        }
-
-        const br = document.createElement("br");
-        thinkingDiv.appendChild(br);
-        const btn = document.createElement("button");
-        btn.className = "correct-btn";
-        btn.textContent = "✏️ Correct this";
-        btn.onclick = function() { correctThis(btn); };
-        thinkingDiv.appendChild(btn);
-
+if (data.image_url) {
+  const loadingText = document.createElement("div");
+  loadingText.className = "image-loading";
+  loadingText.textContent = "🎨 Generating image... (may take 10-20 seconds)";
+  thinkingDiv.appendChild(loadingText);
+  const img = document.createElement("img");
+  img.className = "generated-image";
+  img.style.display = "block";
+  img.style.width = "100%";
+  img.style.maxWidth = "600px";
+  img.style.borderRadius = "12px";
+  img.style.marginTop = "12px";
+  img.alt = "Generated image";
+  img.onload = function() {
+    loadingText.textContent = "🎨 Image generated!";
+    chatbox.scrollTop = chatbox.scrollHeight;
+  };
+  img.onerror = function() {
+    loadingText.textContent = "Image taking longer than expected. Try opening this link: " + data.image_url;
+    const link = document.createElement("a");
+    link.href = data.image_url;
+    link.target = "_blank";
+    link.style.color = "#00d4ff";
+    link.style.display = "block";
+    link.style.marginTop = "8px";
+    link.textContent = "Click here to view image";
+    thinkingDiv.appendChild(link);
+  };
+  img.src = data.image_url;
+  thinkingDiv.appendChild(img);
+}
       } catch(err) {
         thinkingDiv.innerHTML = "❌ Error getting response. Please try again.";
       }
