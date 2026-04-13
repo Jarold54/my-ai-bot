@@ -19,8 +19,10 @@
     .image-tag { background: #ff00ff22; color: #ff88ff; }
     .sources-tag { font-size: 11px; color: #888; margin-bottom: 8px; padding: 2px 8px; display: block; }
     .graph-container { width: 100%; height: 420px; margin-top: 12px; border-radius: 10px; overflow: hidden; background: rgba(0,0,0,0.2); }
-    .generated-image { width: 100%; max-width: 600px; border-radius: 12px; margin-top: 12px; border: 1px solid #00d4ff33; }
-    .image-loading { color: #888; font-size: 13px; margin-top: 8px; }
+    .image-wrapper { margin-top: 12px; }
+    .generated-image { display: block; width: 100%; max-width: 600px; border-radius: 12px; border: 1px solid #00d4ff33; margin-top: 8px; }
+    .image-loading { color: #aaa; font-size: 13px; margin-top: 8px; }
+    .image-link { color: #00d4ff; font-size: 13px; display: block; margin-top: 8px; }
     .correct-btn { background: none; border: 1px solid #444; color: #888; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-top: 10px; transition: all 0.2s; }
     .correct-btn:hover { border-color: #e94560; color: #e94560; }
     .correct-btn:disabled { opacity: 0.5; cursor: default; }
@@ -114,102 +116,4 @@
         if (data.image_url) {
           const tag = document.createElement("div");
           tag.className = "tag image-tag";
-          tag.textContent = "🎨 Image Generation Agent";
-          thinkingDiv.appendChild(tag);
-        }
-
-        if (data.graph) {
-          const tag = document.createElement("div");
-          tag.className = "tag agent-tag";
-          tag.textContent = "📊 Data Analysis Agent";
-          thinkingDiv.appendChild(tag);
-        }
-
-        const replyDiv = document.createElement("div");
-        replyDiv.innerHTML = data.reply
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/```(\w+)?\n([\s\S]*?)```/g, "<pre>$2</pre>")
-          .replace(/\n/g, "<br>");
-        thinkingDiv.appendChild(replyDiv);
-
-        if (data.image_url) {
-          const loadingText = document.createElement("div");
-          loadingText.className = "image-loading";
-          loadingText.textContent = "🎨 Generating image...";
-          thinkingDiv.appendChild(loadingText);
-          const img = document.createElement("img");
-          img.className = "generated-image";
-          img.src = data.image_url;
-          img.alt = "Generated image";
-          img.onload = function() {
-            loadingText.remove();
-            chatbox.scrollTop = chatbox.scrollHeight;
-          };
-          img.onerror = function() {
-            loadingText.textContent = "Could not generate image. Try a different description.";
-          };
-          thinkingDiv.appendChild(img);
-        }
-if (data.image_url) {
-  const loadingText = document.createElement("div");
-  loadingText.className = "image-loading";
-  loadingText.textContent = "🎨 Generating image... (may take 10-20 seconds)";
-  thinkingDiv.appendChild(loadingText);
-  const img = document.createElement("img");
-  img.className = "generated-image";
-  img.style.display = "block";
-  img.style.width = "100%";
-  img.style.maxWidth = "600px";
-  img.style.borderRadius = "12px";
-  img.style.marginTop = "12px";
-  img.alt = "Generated image";
-  img.onload = function() {
-    loadingText.textContent = "🎨 Image generated!";
-    chatbox.scrollTop = chatbox.scrollHeight;
-  };
-  img.onerror = function() {
-    loadingText.textContent = "Image taking longer than expected. Try opening this link: " + data.image_url;
-    const link = document.createElement("a");
-    link.href = data.image_url;
-    link.target = "_blank";
-    link.style.color = "#00d4ff";
-    link.style.display = "block";
-    link.style.marginTop = "8px";
-    link.textContent = "Click here to view image";
-    thinkingDiv.appendChild(link);
-  };
-  img.src = data.image_url;
-  thinkingDiv.appendChild(img);
-}
-      } catch(err) {
-        thinkingDiv.innerHTML = "❌ Error getting response. Please try again.";
-      }
-
-      isLoading = false;
-      sendBtn.disabled = false;
-      chatbox.scrollTop = chatbox.scrollHeight;
-    }
-
-    async function correctThis(btn) {
-      const correction = prompt("What was wrong with this response?");
-      if (!correction) return;
-      btn.disabled = true;
-      btn.textContent = "Saving...";
-      await fetch("/correct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correction })
-      });
-      correctionCount++;
-      document.getElementById("correction-count").textContent = correctionCount + " corrections learned";
-      btn.textContent = "✅ Correction saved";
-    }
-
-    document.getElementById("input").addEventListener("keypress", e => {
-      if (e.key === "Enter" && !isLoading) sendMessage();
-    });
-  </script>
-</body>
-</html>
+          tag.textContent = "🎨 Image Generation A
